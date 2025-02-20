@@ -127,7 +127,7 @@ class Application:
     def video_loop(self):
         try:
             success, cv2image = self.vs.read()
-            if cv2image is not None:
+            if success and cv2image is not None:
                 hands = hd.findHands(cv2image, draw=False, flipType=True)
                 cv2image_copy=np.array(cv2image)
                 cv2image = cv2.cvtColor(cv2image, cv2.COLOR_BGR2RGB)
