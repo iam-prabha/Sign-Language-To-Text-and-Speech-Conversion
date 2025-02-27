@@ -94,8 +94,8 @@ class SignLanguageApp:
     def __init__(self):
         setup_files()
         self.capture = cv2.VideoCapture(0)
-        self.hd = HandDetector(maxHands=1)
-        self.hd2 = HandDetector(maxHands=1)
+        self.hd = HandDetector(maxHands=1, detectionCon=0.8, minTrackCon=0.5)  # Increased confidence thresholds
+        self.hd2 = HandDetector(maxHands=1, detectionCon=0.8, minTrackCon=0.5)
         self.model = load_model(MODEL_PATH)
         self.speak_engine = pyttsx3.init()
         self.text = ""
@@ -128,41 +128,54 @@ class SignLanguageApp:
     def video_loop(self):
         ret, frame = self.capture.read()
         if ret:
+            # Flip the frame horizontally for natural mirroring
             frame = cv2.flip(frame, 1)
             hands = self.hd.findHands(frame, draw=False)
             if hands:
                 hand = hands[0]
-                if isinstance(hand, dict) and 'bbox' in hand:
+                if isinstance(hand, dict) and 'bbox' in hand and 'lmList' in hand:
                     x, y, w, h = hand['bbox']
-                    image = frame[max(0, y-30):y+h+30, max(0, x-30):x+w+30]
+                    # Expand the bounding box to capture more of the hand, especially on the left side
+                    padding = 50  # Increase padding to capture more area
+                    image = frame[max(0, y - padding):y + h + padding, max(0, x - padding):x + w + padding]
                     white = cv2.imread(WHITE_IMAGE_PATH)
                     handz = self.hd2.findHands(image, draw=False)
                     if handz:
                         hand = handz[0]
                         pts = hand['lmList']
-                        os, os1 = ((400 - w) // 2) - 15, ((400 - h) // 2) - 15
-                        for t in [(0, 4), (5, 8), (9, 12), (13, 16), (17, 20)]:
-                            for i in range(t[0], t[1]):
-                                cv2.line(white, (pts[i][0] + os, pts[i][1] + os1),
-                                        (pts[i + 1][0] + os, pts[i + 1][1] + os1), (0, 255, 0), 3)
-                        for pair in [(5, 9), (9, 13), (13, 17), (0, 5), (0, 17)]:
-                            cv2.line(white, (pts[pair[0]][0] + os, pts[pair[0]][1] + os1),
-                                    (pts[pair[1]][0] + os, pts[pair[1]][1] + os1), (0, 255, 0), 3)
-                        img_input = cv2.cvtColor(white, cv2.COLOR_BGR2GRAY)
-                        img_input = cv2.resize(img_input, (28, 28)).reshape(1, 28, 28, 1) / 255.0
-                        prediction = self.model.predict(img_input)
-                        char_index = np.argmax(prediction)
-                        current_char = chr(65 + char_index)
-                        if current_char not in self.text:
-                            self.text += current_char
-                        self.text_display.config(text=self.text)
-                        hand_rgb = cv2.cvtColor(white, cv2.COLOR_BGR2RGB)
-                        hand_img = Image.fromarray(hand_rgb)
-                        handtk = ImageTk.PhotoImage(image=hand_img)
-                        self.hand_label.imgtk = handtk
-                        self.hand_label.configure(image=handtk)
+                        # Debug: Print landmarks to check if left-side points are detected
+                        print("Landmarks:", pts)
+                        os, os1 = ((400 - w) // 2) - padding, ((400 - h) // 2) - padding
+                        # Check if all necessary landmarks are present
+                        if len(pts) >= 21:  # Ensure all 21 landmarks are detected
+                            for t in [(0, 4), (5, 8), (9, 12), (13, 16), (17, 20)]:
+                                for i in range(t[0], t[1]):
+                                    if i + 1 < len(pts):  # Ensure next point exists
+                                        cv2.line(white, (pts[i][0] + os, pts[i][1] + os1),
+                                                (pts[i + 1][0] + os, pts[i + 1][1] + os1), (0, 255, 0), 3)
+                            for pair in [(5, 9), (9, 13), (13, 17), (0, 5), (0, 17)]:
+                                if pair[0] < len(pts) and pair[1] < len(pts):  # Ensure points exist
+                                    cv2.line(white, (pts[pair[0]][0] + os, pts[pair[0]][1] + os1),
+                                            (pts[pair[1]][0] + os, pts[pair[1]][1] + os1), (0, 255, 0), 3)
+                            img_input = cv2.cvtColor(white, cv2.COLOR_BGR2GRAY)
+                            img_input = cv2.resize(img_input, (28, 28)).reshape(1, 28, 28, 1) / 255.0
+                            prediction = self.model.predict(img_input, verbose=0)
+                            char_index = np.argmax(prediction)
+                            current_char = chr(65 + char_index)
+                            if current_char not in self.text:
+                                self.text += current_char
+                            self.text_display.config(text=self.text)
+                            hand_rgb = cv2.cvtColor(white, cv2.COLOR_BGR2RGB)
+                            hand_img = Image.fromarray(hand_rgb)
+                            handtk = ImageTk.PhotoImage(image=hand_img)
+                            self.hand_label.imgtk = handtk
+                            self.hand_label.configure(image=handtk)
+                        else:
+                            print("Incomplete landmarks detected. Check hand positioning or lighting.")
+                    else:
+                        print("No hand detected in cropped region.")
                 else:
-                    print("Unexpected hand format:", hand)
+                    print("Unexpected hand format or missing bbox/lmList:", hand)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             imgtk = ImageTk.PhotoImage(image=img)
