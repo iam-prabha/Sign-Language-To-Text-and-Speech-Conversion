@@ -99,13 +99,13 @@ class SignLanguageApp:
         try:
             setup_files()
             self.capture = cv2.VideoCapture(0)
-            # Remove 'draw' parameter since it's not supported in __init__
+            # Use parameters without 'draw' since it's not supported in __init__
             self.hd = HandDetector(maxHands=2, detectionCon=0.5, minTrackCon=0.5)
             self.hd2 = HandDetector(maxHands=2, detectionCon=0.5, minTrackCon=0.5)
             self.model = load_model(MODEL_PATH)
             self.speak_engine = pyttsx3.init()
             self.text = ""
-            self.root = tk.Tk()  # Ensure root is initialized before any potential errors
+            self.root = tk.Tk()  # Ensure root is initialized early
             self.root.title("Sign Language Converter")
             self.root.geometry("800x600")
             self.video_label = tk.Label(self.root)
@@ -146,30 +146,30 @@ class SignLanguageApp:
                 frame = cv2.flip(frame, 1)
                 # Detect hands without drawing initially
                 hands = self.hd.findHands(frame, draw=False)
-                if hands:
+                if hands and len(hands) > 0:
                     hand = hands[0]
                     if isinstance(hand, dict) and 'bbox' in hand and 'lmList' in hand:
                         x, y, w, h = hand['bbox']
                         # Expand the bounding box to capture more of the hand, especially on the left side
-                        padding = 150  # Further increase padding to ensure full hand capture
+                        padding = 150  # Ensure this captures the full hand, including thumb and pinky
                         image = frame[max(0, y - padding):y + h + padding, max(0, x - padding):x + w + padding]
                         white = cv2.imread(WHITE_IMAGE_PATH)
                         if white is None:
                             print(f"White image not found at {WHITE_IMAGE_PATH}")
                             return
                         handz = self.hd2.findHands(image, draw=False)
-                        if handz:
+                        if handz and len(handz) > 0:
                             hand = handz[0]
                             pts = hand['lmList']
-                            # Debug: Print landmarks to check if left-side points are detected
+                            # Debug: Print landmarks to check if left-side points (thumb 0–4, pinky 17–20) are detected
                             print("Landmarks:", pts)
+                            # Draw landmarks on the video frame for visualization
+                            for point in pts:
+                                cv2.circle(frame, (point[0], point[1]), 5, (0, 255, 0), -1)  # Green dots for landmarks
                             # Ensure white image dimensions match or adjust offset
                             os, os1 = ((400 - w) // 2) - padding, ((400 - h) // 2) - padding
                             # Check if all necessary landmarks are present
                             if len(pts) >= 21:  # Ensure all 21 landmarks are detected
-                                # Draw landmarks on the frame for visualization
-                                for point in pts:
-                                    cv2.circle(frame, (point[0], point[1]), 5, (0, 255, 0), -1)  # Green dots for landmarks
                                 for t in [(0, 4), (5, 8), (9, 12), (13, 16), (17, 20)]:
                                     for i in range(t[0], t[1]):
                                         if i + 1 < len(pts):  # Ensure next point exists
@@ -226,7 +226,7 @@ class SignLanguageApp:
 
     def run(self):
         try:
-            if hasattr(self, 'root') and self.root:  # Check if root exists
+            if hasattr(self, 'root') and self.root:
                 self.root.mainloop()
             else:
                 print("Tkinter root not initialized. Check initialization errors.")
